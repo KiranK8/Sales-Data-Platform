@@ -1,0 +1,60 @@
+# Layout of the legacy tool dump files: export_YYYYMMDD.dat
+# One price per line. Fixed width. NO header line.
+# "start" counts from 1. A field covers the characters start .. start+width-1.
+file_name_pattern: "export_YYYYMMDD.dat"
+encoding: ascii
+line_ending: CRLF
+header_line: false
+record_length: 86
+
+# Field types
+#   text          left-aligned, padded with spaces on the right (strip it when reading)
+#   int           right-aligned, padded with zeros on the left
+#   cents         integer WITHOUT decimal point, 2 implied decimals ("000120000" = 1200.00)
+#   date_ddmmyy   DDMMYY ("011026" = 2026-10-01)
+columns:
+  - name: record_type
+    start: 1
+    width: 2
+    type: text
+    description: Always "PR" (price record)
+  - name: customer_no
+    start: 3
+    width: 4
+    type: int
+    description: Customer number, e.g. 4711
+  - name: customer_name
+    start: 7
+    width: 30
+    type: text
+    description: Customer name, upper case, no umlauts, cut off after 30 characters
+  - name: lane_code
+    start: 37
+    width: 10
+    type: text
+    description: Lane as first 3 letters of origin + "-" + first 3 letters of destination, e.g. HAM-ROT
+  - name: charge_text
+    start: 47
+    width: 16
+    type: text
+    description: Charge label. Percent charges carry the value in the text ("FUEL SURCH. 0.18" = 18 %); flat charges are "BASE RATE", "TOLL", "HANDLING"
+  - name: amount
+    start: 63
+    width: 9
+    type: cents
+    description: Amount in EUR, no decimal point, 2 implied decimals. All zeros for percent charges (the value is in charge_text)
+  - name: valid_from
+    start: 72
+    width: 6
+    type: date_ddmmyy
+    description: First valid day
+  - name: valid_to
+    start: 78
+    width: 6
+    type: date_ddmmyy
+    description: Last valid day
+  - name: currency
+    start: 84
+    width: 3
+    type: text
+    description: Currency code, always EUR
