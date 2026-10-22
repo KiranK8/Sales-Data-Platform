@@ -26,4 +26,3 @@ airflow/logs/
 .vscode/
 .DS_Store
 Thumbs.db
-
