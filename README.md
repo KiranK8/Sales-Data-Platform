@@ -28,4 +28,16 @@ Copy-Item .env.example .env   # then fill in your own values
 | `docs/` | Documentation |
 | `tests/` | Python tests |
 
+## Load the raw files into bronze
+
+```powershell
+docker compose up -d                      # PostgreSQL must be running
+python -m data_generator.generate         # fake source files (only once)
+python -m ingestion.load_bronze           # Excel, CSV and legacy .dat -> schema "bronze"
+python -m pytest -q                       # tests (they use a temporary database)
+```
+
+Bronze stores every value as TEXT, exactly as received, and is append-only. A file that was already loaded
+(same SHA-256) is skipped. Look at `ops.load_log` to see what happened to each file.
+
 See `docs/ARCHITECTURE.md` for the architecture and working rules.
