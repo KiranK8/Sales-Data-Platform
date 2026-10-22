@@ -1,0 +1,25 @@
+# One service for now: PostgreSQL 16. Values come from the .env file.
+services:
+  postgres:
+    image: postgres:16
+    container_name: rieck_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      # Named volume: data survives container restarts and removal
+      - pgdata:/var/lib/postgresql/data
+      # Scripts here run once, on the very first start (empty volume)
+      - ./sql/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
