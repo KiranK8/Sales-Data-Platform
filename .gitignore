@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+*.egg-info/
+
+# Virtual environment and secrets
+.venv/
+.env
+
+# Data: never commit real data (keep the empty folders via .gitkeep)
+data/**
+!data/**/
+!data/**/.gitkeep
+
+# dbt
+dbt_project/target/
+dbt_project/dbt_packages/
+dbt_project/logs/
+logs/
+
+# Airflow
+airflow/logs/
+
+# Editors / OS
+.vscode/
+.DS_Store
+Thumbs.db
