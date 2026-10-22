@@ -10,6 +10,8 @@ from .text import translit
 
 DEMO_CUSTOMER = 4711          # the demo example: Hamburg -> Rotterdam
 DEMO_LANE = "L01"
+DB_DUPLICATE_ID = 9003        # legacy database: a second record of customer 4711 under another number
+DB_DUPLICATE_NAME = "MUELLER LOGISTIK GMBH"
 QUARTER_STARTS = [date(2026, 1, 1), date(2026, 4, 1), date(2026, 7, 1), date(2026, 10, 1)]
 YEAR_END = date(2026, 12, 31)
 
@@ -45,7 +47,7 @@ LANES = [
 CHARGE_TYPES = [
     ("BASE_RATE", "Base rate per shipment", "EUR"),
     ("FUEL_SURCHARGE", "Fuel surcharge on the base rate", "PERCENT"),
-    ("TOLL", "Road toll (flat)", "EUR"),
+    ("TOLL", "Road toll (flat per shipment = EUR per km x lane distance)", "EUR"),
     ("PEAK_SEASON", "Peak season surcharge on the base rate", "PERCENT"),
     ("CURRENCY_ADJUSTMENT", "Currency adjustment on the base rate", "PERCENT"),
     ("HANDLING", "Handling / transshipment (flat)", "EUR"),
@@ -100,6 +102,7 @@ class Truth:
     periods: list
     prices: list
     _alias_by_customer: dict = field(default_factory=dict)
+    db_aliases: list = field(default_factory=list)   # [(raw_name, customer_id)] spellings used in the legacy database
 
     def aliases_of(self, customer_id):
         return self._alias_by_customer[customer_id]
@@ -133,8 +136,9 @@ def _build_customers(rng):
     fake = Faker("de_DE")
     fake.seed_instance(SEED)
     ids = sorted(rng.sample([i for i in range(1000, 9000) if i != DEMO_CUSTOMER], 39) + [DEMO_CUSTOMER])
+    db_rng = make_rng("db-aliases")   # separate generator: does not disturb the other random choices
     used = {"Müller"}
-    customers, aliases = [], []
+    customers, aliases, db_aliases = [], [], []
     for cid in ids:
         if cid == DEMO_CUSTOMER:
             base, sector, abbreviation, legal = "Müller", "Logistik", "Log.", "GmbH"
@@ -152,7 +156,12 @@ def _build_customers(rng):
             ["DE", "AT", "NL", "PL", "CH", "FR", "BE", "CZ"], weights=[70, 6, 6, 5, 4, 3, 3, 3])[0]
         customers.append({"customer_id": cid, "clean_name": variants[0], "country": country})
         aliases.extend((v, cid) for v in variants)
-    return customers, aliases
+        # The legacy database spells the name yet another way (never one of the file variants)
+        pool = [translit(f"{base} {sector} {legal}"), f"{sector} {base} {legal}", f"{base} {sector}  {legal} "]
+        pool = [v for v in pool if v not in variants]
+        db_aliases.append((pool[0] if cid == DEMO_CUSTOMER else db_rng.choice(pool), cid))
+    db_aliases.append((DB_DUPLICATE_NAME, DEMO_CUSTOMER))   # the planted duplicate customer record
+    return customers, aliases, db_aliases
 
 
 def _combo_periods(rng, customer_id, lane, demo):
@@ -168,7 +177,8 @@ def _combo_periods(rng, customer_id, lane, demo):
     distance = lane["distance_km"]
     base = round(rng.uniform(2.0, 2.9) * distance / 5) * 5.0
     fuel = rng.randint(12, 20) / 100
-    toll = round(distance * rng.uniform(0.08, 0.14), 2)
+    toll_rate = rng.randint(8, 14) / 100             # EUR per km, as contracts state it
+    toll = round(distance * toll_rate, 2)            # flat toll per shipment = rate x lane distance
     handling = float(rng.choice([15, 20, 25, 35, 45]))
     currency = rng.choice([1, 2, 3]) / 100
     has_fuel = demo or rng.random() < 0.95
@@ -182,7 +192,8 @@ def _combo_periods(rng, customer_id, lane, demo):
         if i > 0:  # prices drift from one period to the next
             base = round(base * rng.uniform(1.01, 1.06) * 2) / 2
             fuel = round(min(0.25, max(0.08, fuel + rng.choice([-0.02, -0.01, 0.01, 0.02, 0.03]))), 2)
-            toll = round(toll * rng.uniform(1.0, 1.05), 2)
+            toll_rate = round(min(0.16, toll_rate + rng.choice([0, 0, 0.01])), 2)
+            toll = round(distance * toll_rate, 2)
         if demo:  # the demo example: Q4 is 1200.00 EUR + 18 % fuel surcharge
             base, fuel = [1150.0, 1175.0, 1200.0][i], [0.14, 0.16, 0.18][i]
         charges = {"BASE_RATE": round(base, 2)}
@@ -203,7 +214,7 @@ def _combo_periods(rng, customer_id, lane, demo):
 
 def build_truth():
     rng = make_rng("truth")
-    customers, aliases = _build_customers(rng)
+    customers, aliases, db_aliases = _build_customers(rng)
     lanes = [
         {"lane_id": f"L{i:02d}", "origin_city": o, "origin_country": oc,
          "dest_city": d, "dest_country": dc, "distance_km": km}
@@ -235,7 +246,7 @@ def build_truth():
     by_customer = {}
     for raw, cid in aliases:
         by_customer.setdefault(cid, []).append(raw)
-    return Truth(customers, aliases, lanes, periods, prices, by_customer)
+    return Truth(customers, aliases, lanes, periods, prices, by_customer, db_aliases)
 
 
 def _write_csv(path, header, rows):
@@ -249,7 +260,9 @@ def write_truth(truth, folder):
     """Write the clean truth as CSV files into ground_truth/."""
     _write_csv(folder / "customers.csv", ["customer_id", "clean_name", "country"],
                [[c["customer_id"], c["clean_name"], c["country"]] for c in truth.customers])
-    _write_csv(folder / "customer_aliases.csv", ["raw_name", "customer_id"], truth.aliases)
+    _write_csv(folder / "customer_aliases.csv", ["raw_name", "customer_id", "used_in"],
+               [[raw, cid, "files"] for raw, cid in truth.aliases]
+               + [[raw, cid, "legacy_db"] for raw, cid in truth.db_aliases])
     _write_csv(folder / "lanes.csv",
                ["lane_id", "origin_city", "origin_country", "dest_city", "dest_country", "distance_km"],
                [[l["lane_id"], l["origin_city"], l["origin_country"], l["dest_city"], l["dest_country"],

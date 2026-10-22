@@ -7,3 +7,7 @@ pytest
 faker
 xlsxwriter
 pyyaml
+python-docx
+reportlab
+pillow
+pdfplumber

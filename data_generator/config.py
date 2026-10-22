@@ -9,6 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SYNTHETIC = ROOT / "data" / "synthetic"
 INCOMING = SYNTHETIC / "incoming"
 TRUTH = SYNTHETIC / "ground_truth"
+LEGACY = SYNTHETIC / "legacy"
 LAYOUT_FILE = Path(__file__).with_name("legacy_layout.yaml")
 
 ISSUER = "Rieck Logistik Gruppe"  # shown in the title block of the price lists
